@@ -1,16 +1,15 @@
-from __future__ import print_function
+from __future__ import print_function, division
 import json, argparse, os, logging, fcntl, errno, mmap, select, time
 from ctypes import addressof, c_long
 import redis, v4l2
 
 import common
 
+from six.moves import range
+
 IMAGE_KEY = 'image'
 IMAGETIME_KEY = 'image:time'
 
-def read_settings(filename):
-    with open(filename) as f:
-        return json.load(f)
 
 def xioctl(fd, req, arg):
     """
@@ -131,16 +130,16 @@ def main():
         # Right now I only want to support MJPG since I can throw this directly
         # to clients and it can be shown in the browser with minimal serverside
         # computation.
-        formats = [f for f in get_video_formats(vd) if f.pixelformat == v4l2.V4L2_PIX_FMT_MJPEG]
-        if len(formats) == 0:
+        if not any(f.pixelformat == v4l2.V4L2_PIX_FMT_MJPEG for f in get_video_formats(vd)):
             raise ValueError('Device {} does not support the M-JPEG format directly'.format(settings['video']))
         # Find the largest size. For ease of use, I'm only supporting discrete sizing.
-        sizes = list(reversed(sorted([s for s in get_framesizes(vd, v4l2.V4L2_PIX_FMT_MJPEG) if
-            s.type == v4l2.V4L2_FRMSIZE_TYPE_DISCRETE and
-            s.discrete.width * s.discrete.height < settings['pixels']], key=lambda s: s.discrete.width * s.discrete.height)))
-        if len(list(sizes)) == 0:
+        try:
+            framesize = max((s for s in get_framesizes(vd, v4l2.V4L2_PIX_FMT_MJPEG) if
+                s.type == v4l2.V4L2_FRMSIZE_TYPE_DISCRETE and
+                s.discrete.width * s.discrete.height < settings['pixels']), key=lambda s: s.discrete.width * s.discrete.height)
+        except ValueError:
             raise ValueError('Device {} does not support discrete step sizes'.format(settings['video']))
-        framesize = sizes[0]
+
         # Select the camera format
         vidfmt = v4l2.v4l2_format()
         vidfmt.type = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
@@ -180,4 +179,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
