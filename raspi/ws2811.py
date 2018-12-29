@@ -1,4 +1,4 @@
-from __future__ import print_function
+from __future__ import print_function, division
 import spidev
 import random, sched, time, math, argparse, json, queue
 from colorsys import hsv_to_rgb, rgb_to_hsv
@@ -6,6 +6,8 @@ import itertools
 import redis
 
 import common
+
+from six.moves import zip, range
 
 def fuzzy_equals(a, b, margin):
     return abs(a - b) < margin
@@ -18,10 +20,12 @@ class Pixel(object):
     """
     def __iter__(self):
         return self
+
     def __next__(self):
         return (0, 0, 0)
+
     def next(self):
-        return self.__next__()
+        return next(self)
 
 class RandomHuePixel(Pixel):
     """
@@ -38,7 +42,7 @@ class RandomHuePixel(Pixel):
             self.hue += self.step
         else:
             self.hue -= self.step
-        return tuple([int(v * 255) for v in hsv_to_rgb(self.hue, 1, 1)])
+        return tuple((int(v * 255) for v in hsv_to_rgb(self.hue, 1, 1)))
 
 class Keyframe(object):
     """
@@ -56,7 +60,7 @@ class Keyframe(object):
         else:
             steps = self.steps
         for i in range(0, steps+1):
-            cursor = float(i) / float(steps)
+            cursor = i/steps
             yield self.interpolate_step(other, cursor)
 
     def interpolate_step(self, other, cursor):
@@ -70,8 +74,8 @@ class LinearKeyframe(Keyframe):
     Transitions linearly between this color and the next
     """
     def interpolate_step(self, other, cursor):
-        return tuple([int((oc - sc) * cursor) + sc for oc, sc in
-            zip(other.color, self.color)])
+        return tuple((int((oc - sc) * cursor) + sc for oc, sc in
+            zip(other.color, self.color)))
 
 class SineKeyframe(LinearKeyframe):
     """
@@ -100,9 +104,9 @@ class LedString(object):
         self.__pixeliters = []
         self.buffer = [0] * length * 3
     def set_pixels(self, pixels):
-        self.__pixeliters = list([iter(p) for p in pixels])
+        self.__pixeliters = [iter(p) for p in pixels]
     def animate(self):
-        colors = list([next(p) for p in self.__pixeliters])
+        colors = [next(p) for p in self.__pixeliters]
         for i, color in enumerate(itertools.cycle(colors)):
             if i*3 >= len(self.buffer):
                 break
@@ -129,13 +133,9 @@ def load_pixels(doc):
 
 def deserialize_pixels(serialized):
     try:
-        doc = json.loads(serialized)
-        pixels = list(load_pixels(doc))
-        return pixels
-    except TypeError:
-        return []
-    except KeyError:
-        return []
+        return load_pixels(json.loads(serialized))
+    except (TypeError, KeyError):
+        return iter([])
 
 def main():
     parser = argparse.ArgumentParser(description='Raspberry Pi WS2811 SPI Controller')
@@ -167,12 +167,10 @@ def main():
         s.enter(0.01, 1, handle_requests, ())
         while True:
             msg = p.get_message()
-            if msg and msg['type'] == 'message':
-                pixels = list(deserialize_pixels(msg['data']))
-                if len(pixels):
-                    leds.set_pixels(pixels)
-            elif not msg:
+            if not msg:
                 break
+            elif msg['type'] == 'message':
+                leds.set_pixels(deserialize_pixels(msg['data']))
 
     run_leds()
     handle_requests()
@@ -180,4 +178,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
