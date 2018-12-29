@@ -9,6 +9,9 @@ import argparse, io, json
 from flask import Flask, render_template, send_from_directory, request, Response, jsonify
 import redis
 from collections import deque
+from itertools import islice
+
+from six import viewitems
 
 sio = socketio.Server()
 app = Flask(__name__)
@@ -104,10 +107,8 @@ def handle_repack_error(error):
 
 def repack_pixels(raw):
     # Only support up to 50 pixels
-    if len(raw) > 50:
-        raw = raw[:50]
     # Sanitize the pixels
-    for d in raw:
+    for d in islice(raw, 50):
         if d['type'] == 'random-hue':
             step = float(d['step'])
             if step > 0.1:
@@ -125,7 +126,7 @@ def repack_pixels(raw):
                 if 'max-steps' in k:
                     key['max-steps'] = int(k['max-steps'])
                 # Clamp all numeric values at 0-255
-                key = dict([(ke, abs(v) & 0xFF) for ke, v in key.items()])
+                key = {ke: abs & 0xFF for ke, v in viewitems(key)}
                 # Only accept specific key types
                 if k['type'] == 'linear':
                     key['type'] = 'linear'
@@ -149,9 +150,10 @@ def pattern():
     try:
         repacked = list(repack_pixels(j))
     except Exception as e:
-        raise RepackException('Got error "' + str(type(e)) + '" while packaging pattern data: ' + e.message)
+        raise RepackException('Got error "' + str(type(e)) + '" while packaging pattern data: ' + str(e))
+
     if len(publish_deque) == publish_deque.maxlen:
-        return json.dumps({ 'success': False, 'message': 'Internal publish queue is full, please try again' }, 429, { 'content-type': 'application/json' })
+        return json.dumps({ 'success': False, 'message': 'Internal publish queue is full, please try again' }), 429, { 'content-type': 'application/json' }
     else:
         publish_deque.append({'pixels': repacked, 'ip': request.access_route[0]})
         return json.dumps({ 'success': True, 'position': len(publish_deque) }), 200, { 'content-type': 'application/json' }
@@ -176,4 +178,3 @@ if __name__ == '__main__':
 
     app = socketio.Middleware(sio, app)
     eventlet.wsgi.server(eventlet.listen(('', 3000)), app)
-
