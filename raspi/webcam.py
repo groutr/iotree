@@ -163,9 +163,8 @@ def main():
         count = 1
         for frame, timestamp in buffers.run():
             #print ('Frame: {}'.format(time.time() - end))
-            s = time.time()
-            db.set(IMAGE_KEY, frame, px=1000)
-            db.set(IMAGETIME_KEY, timestamp)
+            db.msetnx({IMAGE_KEY: frame, IMAGETIME_KEY: timestamp})
+            db.expire(IMAGE_KEY, 1000)
             #print ('Upload: {}'.format(time.time() - s))
             end = time.time()
             if end - start > 1.0:
