@@ -3,6 +3,7 @@ import spidev
 import random, sched, time, math, argparse, json, queue
 from colorsys import hsv_to_rgb, rgb_to_hsv
 import itertools
+import operator
 import redis
 
 import common
@@ -114,15 +115,16 @@ class LedString(object):
         return self.buffer
 
 def load_pixels(doc):
+    rgb = operator.itemgetter('r', 'g', 'b')
     for d in doc:
         if d['type'] == 'random-hue':
-            yield RandomHuePixel(float(d['step']))
+            yield RandomHuePixel(d['step'])
         elif d['type'] == 'keyframe':
             keys = []
             for k in d['keys']:
-                color = (int(k['r']), int(k['g']), int(k['b']))
-                steps = int(k['steps']) if 'steps' in k else None
-                max_steps = int(k['max_steps']) if 'max-steps' in k else None
+                color = rgb(k)
+                steps = k['steps'] if 'steps' in k else None
+                max_steps = k['max_steps'] if 'max-steps' in k else None
                 if k['type'] == 'linear':
                     keys.append(LinearKeyframe(color, steps, max_steps))
                 elif k['type'] == 'sine':
